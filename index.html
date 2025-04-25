@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>空き家診断フォーム</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+<h3>空き家コスト診断フォーム</h3>
+
+  <form id="akiyafrm">
+    <label>土地面積（㎡）<input type="number" id="land" required></label><br>
+    <label>現在の固定資産税（任意）<input type="number" id="tax"></label><br>
+    <label>建物床面積（㎡）<input type="number" id="floor" required></label><br>
+    <label>管理コスト（円）<input type="number" id="cost" required></label><br>
+    <label>売却予想価格（任意）<input type="number" id="sale"></label><br>
+    <button type="button" id="submitBtn">送信する</button>
+  </form>
+
+<script>
+const liffId = "2007323943-d6DJ77WO";
+
+window.onload = async () => {
+      try {
+        await liff.init({ liffId });
+        console.log("LIFF initialized");
+      } catch (err) {
+        alert("liff.init 失敗: " + err);
+        return;
+      }
+      document.getElementById("submitBtn").addEventListener("click", submitForm);
+    };
+
+    async function submitForm() {
+      // 1. 呼び出し確認
+      alert("submitForm が呼ばれました");
+
+      // 2. プロファイル取得
+      let profile;
+      try {
+        profile = await liff.getProfile();
+        alert("getProfile 成功: " + JSON.stringify(profile));
+      } catch (err) {
+        alert("getProfile 失敗: " + err);
+        return;
+      }
+
+      // 3. ペイロード組み立て＆確認
+      const payload = {
+        userId: profile.userId,
+        land: document.getElementById("land").value,
+        tax: document.getElementById("tax").value || "",
+        floor: document.getElementById("floor").value,
+        cost: document.getElementById("cost").value,
+        sale: document.getElementById("sale").value || ""
+      };
+      alert("payload: " + JSON.stringify(payload));
+
+  fetch("https://script.google.com/macros/s/AKfycbxnfyVhKJ7hUCMkTcXBv7b62fxJgERgarlLJ71U_d21q7C2W2tXZlZhbRRYyEL_rJjs/exec", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  })
+  .then(response => response.json())
+  .then(data => {
+    alert("fetch成功: " + JSON.stringify(data));
+    if (data.pdfUrl) {
+      liff.sendMessages([{ type: "text", text: "診断結果はこちら：" + data.pdfUrl }])
+        .then(() => liff.closeWindow());
+    }
+  })
+  .catch(err => {
+    alert("fetch失敗: " + err);
+    console.error(err);
+  });
+}
+</script>
+
+</body>
+</html>
