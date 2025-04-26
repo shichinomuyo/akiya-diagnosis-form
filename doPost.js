@@ -128,3 +128,27 @@ function doPost(e) {
   // 5) Return response to LIFF client
   return buildResponse({ status: 'ok', pdfUrl });
 }
+
+<!-- pdfTemplate.html -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    h1 { font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    td { padding: 4px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>空き家コスト診断結果レポート</h1>
+  <table>
+    <tr><td>所在地</td><td><?= maskAddress(data.address || '入力なし') ?></td></tr>
+    <tr><td>土地面積（㎡）</td><td><?= data.land ?></td></tr>
+    <tr><td>固定資産税（現在円）</td><td><?= landTaxNow.toLocaleString() ?></td></tr>
+    <tr><td>固定資産税（特定空家後円）</td><td><?= landTaxAfter.toLocaleString() ?></td></tr>
+    <tr><td>３年間の想定総コスト（円）</td><td><?= totalCost3y.toLocaleString() ?></td></tr>
+  </table>
+</body>
+</html>
