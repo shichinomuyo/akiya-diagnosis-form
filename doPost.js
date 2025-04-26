@@ -1,14 +1,20 @@
+/**
+ * Main POST handler for LINE LIFF form submissions.
+ */
 function doPost(e) {
-  Logger.log("=== doPost START ===");
+  debugLog("=== doPost START ===");
 
   try {
-    Logger.log("e: " + JSON.stringify(e));
-    Logger.log("postData: " + e.postData?.contents);
+    debugLog("e: " + JSON.stringify(e));
+    debugLog("postData: " + e.postData?.contents);
 
     const data = JSON.parse(e.postData.contents);
-    Logger.log("Parsed: " + JSON.stringify(data));
+    debugLog("Parsed: " + JSON.stringify(data));
 
-    const sheet = SpreadsheetApp.openById("1P-4GO7poP9pr8NOTPdU9idvj2FFtl9uDtHDls1iDmkU").getSheetByName("sheet1");
+    // 1) スプレッドシートに書き込み
+    const sheet = SpreadsheetApp
+      .openById("1P-4GO7poP9pr8NOTPdU9idvj2FFtl9uDtHDls1iDmkU")
+      .getSheetByName("sheet1");
     sheet.appendRow([
       new Date(),
       data.userId,
@@ -18,19 +24,54 @@ function doPost(e) {
       data.cost,
       data.sale
     ]);
+    debugLog("✅ appendRow 成功");
 
-    Logger.log("✅ appendRow 成功");
+    // 2) PDF URL を生成
+    let pdfUrl;
+    try {
+      pdfUrl = generatePdfUrl(data);
+      debugLog("✅ PDF URL generated: " + pdfUrl);
+    } catch (pdfErr) {
+      debugLog("❌ PDF generation error: " + pdfErr);
+      // PDF生成失敗でも処理を継続し、URLなしで返却
+      pdfUrl = "";
+    }
 
+    // 3) レスポンス返却
     return ContentService.createTextOutput(JSON.stringify({
       status: "ok",
-      pdfUrl: "https://example.com/dummy.pdf"
+      pdfUrl: pdfUrl
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
-    Logger.log("❌ Error: " + err);
+    debugLog("❌ Error: " + err);
     return ContentService.createTextOutput(JSON.stringify({
       status: "error",
       error: err.toString()
     })).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+/**
+ * HTMLテンプレートからPDFを生成しDriveに保存、共有URLを返す
+ */
+function generatePdfUrl(data) {
+  // テンプレートを取得・データバインド
+  const tpl = HtmlService.createTemplateFromFile('pdfTemplate');
+  tpl.data = data;
+  const html = tpl.evaluate().getContent();
+
+  // HTML -> PDF
+  const blob = Utilities.newBlob(html, 'text/html', '診断結果.html')
+    .getAs(MimeType.PDF)
+    .setName(`診断結果_${new Date().toISOString()}.pdf`);
+
+  // Driveに保存
+  const folder = DriveApp.getFolderById('1iI4HtvwfSL-HXy5Sfe42ypz57Ob73tu6');
+  const file = folder.createFile(blob);
+
+  // 共有設定
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return file.getUrl();
 }
