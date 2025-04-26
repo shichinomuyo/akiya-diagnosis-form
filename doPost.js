@@ -27,28 +27,38 @@ function doPost(e) {
     debugLog("✅ appendRow 成功");
 
     // 2) PDF URL を生成
+    // PDF 生成
     let pdfUrl;
     try {
       pdfUrl = generatePdfUrl(data);
       debugLog("✅ PDF URL generated: " + pdfUrl);
     } catch (pdfErr) {
-      debugLog("❌ PDF generation error: " + pdfErr);
-      // PDF生成失敗でも処理を継続し、URLなしで返却
-      pdfUrl = "";
+      debugLog("❌ PDF generation error: " + pdfErr.stack);
+      // ここでエラーを返す
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "pdf_error",
+          error: pdfErr.toString()
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 3) レスポンス返却
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "ok",
-      pdfUrl: pdfUrl
-    })).setMimeType(ContentService.MimeType.JSON);
+    // 成功レスポンス
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "ok",
+        pdfUrl: pdfUrl
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
-    debugLog("❌ Error: " + err);
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      error: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    debugLog("❌ Error: " + err.stack);
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "error",
+        error: err.toString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
