@@ -4,7 +4,7 @@
 const SPREADSHEET_ID      = "1P-4GO7poP9pr8NOTPdU9idvj2FFtl9uDtHDls1iDmkU";
 const SHEET_NAME          = "sheet1";
 const DRIVE_FOLDER_ID     = "1iI4HtvwfSL-HXy5Sfe42ypz57Ob73tu6";
-const LINE_CHANNEL_TOKEN  = "YOUR_CHANNEL_ACCESS_TOKEN";
+const LINE_CHANNEL_TOKEN  = "bCRRwvGg2wufQ7szExS08zRVF6aSpW5Vkcm52hu/DV5RqtJcau82omcuG2kkbzrIBIv6snpqNSAzsS0XzHudxsXlkYSt/lS0oN7CRDnnjlUjBBVsl3JLVTzXx0lac9BRrUr92UcIx/gGjEeUfJIOKgdB04t89/1O/w1cDnyilFU=";
 const LINE_PUSH_API_URL   = "https://api.line.me/v2/bot/message/push";
 
 /**
@@ -83,11 +83,9 @@ function doPost(e) {
   // 3) Generate PDF report via DocumentApp
   let pdfUrl;
   try {
-    // Create document and build content
     const doc = DocumentApp.create('空き家コスト診断レポート_' + new Date().toISOString());
     const body = doc.getBody();
     body.appendParagraph('【空き家コスト診断レポート】');
-    // Uncomment and use if address is needed
     // body.appendParagraph('所在地：' + maskAddress(data.address || '入力なし'));
     body.appendParagraph(`土地面積：${data.land}㎡`);
     body.appendParagraph(`固定資産税 現在：¥${landTaxNow.toLocaleString()}`);
@@ -96,25 +94,24 @@ function doPost(e) {
 
     doc.saveAndClose();  // Ensure content is saved
 
-    // Move intermediate doc to target folder and remove from root
+    // Fetch intermediate document and create PDF
     const docFile = DriveApp.getFileById(doc.getId());
-    const folder  = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-    folder.addFile(docFile);
-    DriveApp.getRootFolder().removeFile(docFile);
-
-    // Fetch as PDF from the moved document
     const pdfBlob = docFile.getAs(MimeType.PDF)
       .setName('診断結果_' + new Date().toISOString() + '.pdf');
-    const file = folder.createFile(pdfBlob);
+    const folder  = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    const file    = folder.createFile(pdfBlob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     pdfUrl = file.getUrl();
+
+    // Trash intermediate document
+    docFile.setTrashed(true);
     debugLog("✅ PDF created at:", pdfUrl);
   } catch (err) {
     debugLog("❌ PDF generation error:", err);
     return buildResponse({ status: 'pdf_error', error: err.toString() });
   }
 
-  // 4) Push message via Messaging API
+  // 4) Push message via Messaging API from server-side
   try {
     const payload = {
       to: data.userId,
@@ -123,18 +120,19 @@ function doPost(e) {
         text: `診断PDFが出来上がりました！\n▼ダウンロード\n${pdfUrl}`
       }]
     };
-    UrlFetchApp.fetch(LINE_PUSH_API_URL, {
+    const response = UrlFetchApp.fetch(LINE_PUSH_API_URL, {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: 'Bearer ' + LINE_CHANNEL_TOKEN },
       payload: JSON.stringify(payload)
     });
-    debugLog("✅ LINE message push success");
+    debugLog("🔔 LINE push status:", response.getResponseCode());
+    debugLog("🔔 LINE push body:", response.getContentText());
   } catch (err) {
-    debugLog("❌ LINE push error:", err);
+    debugLog("❌ LINE push error:", err.toString());
     // Continue even if push fails
   }
 
   // 5) Return response to LIFF client
-  return buildResponse({ status: 'ok', pdfUrl });
+  return buildResponse({ status: 'ok' });
 }
