@@ -56,7 +56,7 @@ window.onload = async () => {
       };
       alert("payload: " + JSON.stringify(payload));
 
-  fetch("https://script.google.com/macros/s/AKfycbxnfyVhKJ7hUCMkTcXBv7b62fxJgERgarlLJ71U_d21q7C2W2tXZlZhbRRYyEL_rJjs/exec", {
+      fetch("/api/diagnose", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
