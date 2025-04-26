@@ -12,14 +12,14 @@
     <label>土地面積（㎡）<input type="number" id="land" required></label><br>
     <label>現在の固定資産税（任意）<input type="number" id="tax"></label><br>
     <label>建物床面積（㎡）<input type="number" id="floor" required></label><br>
-    <label>管理コスト（円）<input type="number" id="cost" required></label><br>
+    <label>管理コスト（円/年）<input type="number" id="cost" required></label><br>
     <label>売却予想価格（任意）<input type="number" id="sale"></label><br>
     <button type="button" id="submitBtn">送信する</button>
   </form>
 
 <script>
   // デバッグ用フラグ本番ではfalse
-  const DEBUG = false;
+  const DEBUG = true;
   // 元の alert を保持
   const _alert = window.alert;
   // DEBUG=false のときは alert を抑制
