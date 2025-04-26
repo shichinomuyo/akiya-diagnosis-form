@@ -1,76 +1,140 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>空き家診断フォーム</title>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-</head>
-<body>
-  <h3>空き家コスト診断フォーム</h3>
+/**
+ * Configuration constants
+ */
+const SPREADSHEET_ID      = "1P-4GO7poP9pr8NOTPdU9idvj2FFtl9uDtHDls1iDmkU";
+const SHEET_NAME          = "sheet1";
+const DRIVE_FOLDER_ID     = "1iI4HtvwfSL-HXy5Sfe42ypz57Ob73tu6";
+const LINE_CHANNEL_TOKEN  = "YOUR_CHANNEL_ACCESS_TOKEN";
+const LINE_PUSH_API_URL   = "https://api.line.me/v2/bot/message/push";
 
-  <form id="akiyafrm">
-    <label>土地面積（㎡）<input type="number" id="land" required></label><br>
-    <label>現在の固定資産税（任意）<input type="number" id="tax"></label><br>
-    <label>建物床面積（㎡）<input type="number" id="floor" required></label><br>
-    <label>管理コスト（円/年）<input type="number" id="cost" required></label><br>
-    <label>売却予想価格（任意）<input type="number" id="sale"></label><br>
-    <button type="button" id="submitBtn">送信する</button>
-  </form>
+/**
+ * Helper to log only when DEBUG is true
+ */
+function debugLog() {
+  if (typeof DEBUG !== 'undefined' && DEBUG) {
+    Logger.log.apply(Logger, arguments);
+  }
+}
 
-  <script>
-    // 本番では false
-    const DEBUG = false;
-    // 元の alert を保持
-    const _alert = window.alert;
-    // DEBUG=false のときは alert を抑制
-    window.alert = message => { if (DEBUG) _alert(message); };
+/**
+ * Flatten and send JSON response
+ */
+function buildResponse(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
-    const liffId = "2007323943-d6DJ77WO";
+/**
+ * Calculate default tax rate if not provided
+ */
+function calcTax(land) {
+  return Number(land) * 100;
+}
 
-    window.onload = async () => {
-      try {
-        await liff.init({ liffId });
-        document.getElementById("submitBtn").addEventListener("click", submitForm);
-      } catch (err) {
-        console.error("LIFF init failed:", err);
-      }
+/**
+ * Mask address beyond first 3 chars
+ */
+function maskAddress(address) {
+  return address.replace(/(.{3}).+/, '$1***');
+}
+
+/**
+ * Main entry point for POST requests
+ */
+function doPost(e) {
+  debugLog("=== doPost START ===");
+
+  let data;
+  try {
+    data = JSON.parse(e.postData.contents);
+    debugLog("Parsed data:", data);
+  } catch (err) {
+    debugLog("❌ JSON parse error:", err);
+    return buildResponse({ status: 'error', error: 'Invalid payload' });
+  }
+
+  // 1) Append to Spreadsheet
+  try {
+    const sheet = SpreadsheetApp
+      .openById(SPREADSHEET_ID)
+      .getSheetByName(SHEET_NAME);
+    sheet.appendRow([
+      new Date(),
+      data.userId,
+      data.land,
+      data.tax,
+      data.floor,
+      data.cost,
+      data.sale
+    ]);
+    debugLog("✅ Spreadsheet append success");
+  } catch (err) {
+    debugLog("❌ Spreadsheet error:", err);
+    return buildResponse({ status: 'error', error: 'Spreadsheet write failed' });
+  }
+
+  // 2) Compute costs
+  const landTaxNow   = data.tax ? Number(data.tax) : calcTax(data.land);
+  const landTaxAfter = landTaxNow * 6;
+  const totalCost3y  = landTaxAfter * 3 + Number(data.cost) * 3;
+  debugLog(`Computed taxes: now=${landTaxNow}, after=${landTaxAfter}, total3y=${totalCost3y}`);
+
+  // 3) Generate PDF report via DocumentApp
+  let pdfUrl;
+  try {
+    // Create document and build content
+    const doc = DocumentApp.create('空き家コスト診断レポート_' + new Date().toISOString());
+    const body = doc.getBody();
+    body.appendParagraph('【空き家コスト診断レポート】');
+    // Uncomment and use if address is needed
+    // body.appendParagraph('所在地：' + maskAddress(data.address || '入力なし'));
+    body.appendParagraph(`土地面積：${data.land}㎡`);
+    body.appendParagraph(`固定資産税 現在：¥${landTaxNow.toLocaleString()}`);
+    body.appendParagraph(`特定空家指定後：¥${landTaxAfter.toLocaleString()} (×6)`);
+    body.appendParagraph(`３年間の想定総コスト：¥${totalCost3y.toLocaleString()}`);
+
+    doc.saveAndClose();  // Ensure content is saved
+
+    // Move intermediate doc to target folder and remove from root
+    const docFile = DriveApp.getFileById(doc.getId());
+    const folder  = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    folder.addFile(docFile);
+    DriveApp.getRootFolder().removeFile(docFile);
+
+    // Fetch as PDF from the moved document
+    const pdfBlob = docFile.getAs(MimeType.PDF)
+      .setName('診断結果_' + new Date().toISOString() + '.pdf');
+    const file = folder.createFile(pdfBlob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    pdfUrl = file.getUrl();
+    debugLog("✅ PDF created at:", pdfUrl);
+  } catch (err) {
+    debugLog("❌ PDF generation error:", err);
+    return buildResponse({ status: 'pdf_error', error: err.toString() });
+  }
+
+  // 4) Push message via Messaging API
+  try {
+    const payload = {
+      to: data.userId,
+      messages: [{
+        type: 'text',
+        text: `診断PDFが出来上がりました！\n▼ダウンロード\n${pdfUrl}`
+      }]
     };
+    UrlFetchApp.fetch(LINE_PUSH_API_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + LINE_CHANNEL_TOKEN },
+      payload: JSON.stringify(payload)
+    });
+    debugLog("✅ LINE message push success");
+  } catch (err) {
+    debugLog("❌ LINE push error:", err);
+    // Continue even if push fails
+  }
 
-    async function submitForm() {
-      // 1) プロファイル取得
-      let profile;
-      try {
-        profile = await liff.getProfile();
-      } catch (err) {
-        console.error("getProfile failed:", err);
-        return;
-      }
-
-      // 2) ペイロード組み立て
-      const payload = {
-        userId: profile.userId,
-        land: document.getElementById("land").value,
-        tax: document.getElementById("tax").value || "",
-        floor: document.getElementById("floor").value,
-        cost: document.getElementById("cost").value,
-        sale: document.getElementById("sale").value || ""
-      };
-
-      // 3) サーバーへ POST
-      try {
-        await fetch("/api/diagnose", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        // 送信完了を一度だけユーザーに通知
-        _alert("送信が完了しました。閉じます。");
-        liff.closeWindow();
-      } catch (err) {
-        console.error("fetch failed:", err);
-        _alert("送信中にエラーが発生しました。");
-      }
-    }
-  </script>
-</body>
-</html>
+  // 5) Return response to LIFF client
+  return buildResponse({ status: 'ok', pdfUrl });
+}

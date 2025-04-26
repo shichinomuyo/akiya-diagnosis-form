@@ -18,21 +18,18 @@
   </form>
 
   <script>
-    // 本番では false に
+    // 本番では false
     const DEBUG = false;
     // 元の alert を保持
     const _alert = window.alert;
     // DEBUG=false のときは alert を抑制
-    window.alert = function(message) {
-      if (DEBUG) _alert(message);
-    };
+    window.alert = message => { if (DEBUG) _alert(message); };
 
     const liffId = "2007323943-d6DJ77WO";
 
     window.onload = async () => {
       try {
         await liff.init({ liffId });
-        console.log("LIFF initialized");
         document.getElementById("submitBtn").addEventListener("click", submitForm);
       } catch (err) {
         console.error("LIFF init failed:", err);
@@ -40,6 +37,7 @@
     };
 
     async function submitForm() {
+      // 1) プロファイル取得
       let profile;
       try {
         profile = await liff.getProfile();
@@ -48,6 +46,7 @@
         return;
       }
 
+      // 2) ペイロード組み立て
       const payload = {
         userId: profile.userId,
         land: document.getElementById("land").value,
@@ -57,14 +56,15 @@
         sale: document.getElementById("sale").value || ""
       };
 
+      // 3) サーバーへ POST
       try {
         await fetch("/api/diagnose", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        // 送信完了をユーザーに通知
-        _alert("送信が完了しました。ページを閉じます。");
+        // 送信完了を一度だけユーザーに通知
+        _alert("送信が完了しました。閉じます。");
         liff.closeWindow();
       } catch (err) {
         console.error("fetch failed:", err);
